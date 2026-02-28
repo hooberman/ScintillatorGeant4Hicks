@@ -1,0 +1,112 @@
+#include "Generator.hh"
+
+#include "G4ParticleGun.hh"
+#include "G4ParticleTable.hh"
+#include "G4SystemOfUnits.hh"
+#include "Randomize.hh"
+#include <cmath>
+
+MyPrimaryGenerator::MyPrimaryGenerator() {
+    fParticleGun = new G4ParticleGun(1);
+}
+
+MyPrimaryGenerator::~MyPrimaryGenerator() {
+    delete fParticleGun;
+}
+
+void MyPrimaryGenerator::GeneratePrimaries(G4Event *anEvent) {
+
+    // Detector radius and length (mm by default in Geant4)
+    G4double detR = 37.5;    // radius
+    G4double detZ = 490.0;   // length (z extent)
+
+    //------------------------------------------------------------
+    // Select particle (mu+)
+    //------------------------------------------------------------
+    G4ParticleDefinition *mu =
+        G4ParticleTable::GetParticleTable()->FindParticle("mu+");
+
+    //------------------------------------------------------------
+    // STEP 1: Pick a random point inside the detector volume.
+    //------------------------------------------------------------
+    // 1a) z uniformly in [-detZ/2, +detZ/2]
+    G4double zHit = (G4UniformRand() - 0.5) * detZ;
+
+    // 1b) r from linear pdf f(r) with f(0)=0, f(R)=2/R
+    //     i.e. f(r) = 2r / R^2  -> r = R * sqrt(U)
+    G4double u_r  = G4UniformRand();
+    G4double rHit = detR * std::sqrt(u_r);
+
+    // 1c) phi uniformly in [0, 2π)
+    G4double phiHit = 2.0 * M_PI * G4UniformRand();
+
+    // Convert hit point to Cartesian coordinates
+    G4double xHit = rHit * std::cos(phiHit);
+    G4double yHit = rHit * std::sin(phiHit);
+
+    //------------------------------------------------------------
+    // STEP 2: Choose muon direction (θ, φ) and find starting (x0,y0,z0)
+    //         such that the track passes through (xHit,yHit,zHit).
+    //------------------------------------------------------------
+
+    // 2a) muon φ uniformly in [0, 2π)
+    G4double phiMu = 2.0 * M_PI * G4UniformRand();
+
+    // 2b) muon θ in [0, 0.9 * π/2] with cos^2θ distribution
+    //     Use the same CDF inversion via Newton–Raphson as before,
+    //     but with theta_max = 0.9 * (π/2) = 0.9 * 90 deg.
+    G4double theta_max = 0.99 * (90.0 * deg);
+
+    // CDF A(θ) = ∫ cos^2θ dθ from 0 to θ = 0.5 θ + 0.25 sin(2θ)
+    auto A = [](G4double th) {
+        return 0.5 * th + 0.25 * std::sin(2.0 * th);
+    };
+
+    G4double Amax   = A(theta_max);
+    G4double u      = G4UniformRand();
+    G4double target = u * Amax;
+
+    // Initial guess: linear in [0, θ_max]
+    G4double theta = u * theta_max;
+
+    // Newton–Raphson iteration to solve A(theta) = target
+    for (int iter = 0; iter < 10; ++iter) {
+        G4double f  = A(theta) - target;
+        G4double fp = std::cos(theta) * std::cos(theta); // dA/dθ = cos^2θ
+
+        theta -= f / fp;
+
+        if (theta < 0.0)        theta = 0.0;
+        if (theta > theta_max)  theta = theta_max;
+    }
+
+    // 2c) Fix z0 and back-calculate (x0,y0) so the track passes through the hit point.
+    G4double z0 = -400.0; // mm
+
+    // Direction unit vector from (θ, φ)
+    // θ measured from +z, so uz = cosθ > 0 (upward-going)
+    G4double ux = std::sin(theta) * std::cos(phiMu);
+    G4double uy = std::sin(theta) * std::sin(phiMu);
+    G4double uz = std::cos(theta); // > 0 due to θ ∈ [0, 0.9 π/2]
+
+    // Solve for path length s such that:
+    // (x0, y0, z0) + s * (ux, uy, uz) = (xHit, yHit, zHit)
+    // Using z: s = (zHit - z0) / uz
+    G4double s = (zHit - z0) / uz;
+
+    G4double x0 = xHit - s * ux;
+    G4double y0 = yHit - s * uy;
+
+    G4ThreeVector position(x0, y0, z0);
+    G4ThreeVector direction(ux, uy, uz);
+
+    //------------------------------------------------------------
+    // FIRE THE MUON
+    //------------------------------------------------------------
+    fParticleGun->SetParticleDefinition(mu);
+    fParticleGun->SetParticlePosition(position);
+    fParticleGun->SetParticleMomentumDirection(direction);
+    fParticleGun->SetParticleMomentum(100.0 * GeV);
+
+    fParticleGun->GeneratePrimaryVertex(anEvent);
+}

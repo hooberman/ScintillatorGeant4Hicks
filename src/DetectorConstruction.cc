@@ -1,0 +1,810 @@
+// ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+// MATERIAL REFERENCES FOR BC-408/EJ-200: (NOT NECESSARILY IMPLEMENTED)
+// For Atomic Composition:
+// https://luxiumsolutions.com/radiation-detection-scintillators/plastic-scintillators/bc400-bc404-bc408-bc412-bc416
+// https://eljentechnology.com/products/plastic-scintillators/ej-200-ej-204-ej-208-ej-212
+// For Optical Properties:
+// BC408 Properties from https://github.com/alicelynch/PlasticScint_Fibre/blob/master/src/PSDetectorConstruction.cc
+// BC408 Properties from https://neutrino.erciyes.edu.tr/SSLG4/, which does not include optical properties (?)
+// ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+//-----------------------------
+// additional data at:
+//-----------------------------
+
+// https://luxiumsolutions.com/radiation-detection-scintillators/plastic-scintillators/bc400-bc404-bc408-bc412-bc416
+
+
+#include "DetectorConstruction.hh"
+#include "G4SDManager.hh"
+#include "G4LogicalBorderSurface.hh"
+#include "G4Tubs.hh"
+
+MyDetectorConstruction::MyDetectorConstruction() {}
+
+MyDetectorConstruction::~MyDetectorConstruction() {}
+
+G4VPhysicalVolume *MyDetectorConstruction::Construct() {
+
+    //---------------------------------------------
+    // DETECTOR PARAMETERS
+    //---------------------------------------------
+  
+    const G4double scintRadius   = 3.75*cm;  // disk radius
+    const G4double scintHalfZ    = 0.5*cm;   // half of disk thickness
+    const G4int    nDisks        = 25;       // number of disks
+    const G4double gap           = 1.0*cm;   // gap between disks
+
+    // MATERIAL PROPERTIES |========================================================================================================
+
+    // --- BC408 scintillation emission spectrum, ~380–480 nm, peak ~425 nm ---
+    // Wavelengths: 380, 390, 400, 410, 420, 430, 440, 450, 460, 470, 480 nm
+    // Energies: E[eV] = 1240 / lambda[nm]
+    const G4int nScint = 11;
+    
+    G4double PhotonEnergy[nScint] = {
+      2.583*eV, // 480 nm
+      2.638*eV, // 470 nm
+      2.696*eV, // 460 nm
+      2.756*eV, // 450 nm
+      2.818*eV, // 440 nm
+      2.884*eV, // 430 nm
+      2.952*eV, // 420 nm
+      3.024*eV, // 410 nm
+      3.100*eV, // 400 nm
+      3.179*eV, // 390 nm
+      3.263*eV  // 380 nm
+    };
+
+
+    G4double scintSpectrum[nScint] = {
+      0.10, // 480 nm
+      0.21, // 470 nm
+      0.40, // 460 nm
+      0.63, // 450 nm
+      0.86, // 440 nm
+      1.00, // 430 nm
+      1.00, // 420 nm
+      0.86, // 410 nm
+      0.63, // 400 nm
+      0.40, // 390 nm
+      0.21  // 380 nm
+    };
+
+    
+    //--------------------
+    // don't touch!
+    //--------------------    
+    
+    const G4double moduleThick   = 2.0*scintHalfZ;                        // disk thickness thickness
+    const G4double centerSpacing = moduleThick + gap;                     // z spacing between centers of adjacent disks
+    const G4double totalLength   = nDisks*moduleThick + (nDisks - 1)*gap; // total detector length
+    const G4double halfStack     = 0.5*totalLength;                       // half of detector length
+
+
+
+
+
+
+    
+    G4NistManager* nist = G4NistManager::Instance();
+
+    // Elements |==========================================================================================================
+
+    G4Element *C = nist->FindOrBuildElement("C");
+    G4Element *H = nist->FindOrBuildElement("H");    
+
+    G4double density;
+    G4int nElem, nAtoms;
+    
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    // BC408 properties
+    density =1.023*g/cm3;
+    G4Material* BC408 = new G4Material("BC408", density, nElem=2);
+
+    BC408->AddElement(C, 91.512 * perCent);
+    BC408->AddElement(H, 8.488 * perCent);
+
+    // SiPM window properties
+    G4Material* SiPMWindow = new G4Material("SiPMWindow", 1.05*g/cm3, 2);
+	
+    SiPMWindow->AddElement(nist->FindOrBuildElement("C"), 2);
+    SiPMWindow->AddElement(nist->FindOrBuildElement("H"), 6);
+
+    G4double photonEnergySiPM[4] = {2.64*eV, 2.83*eV, 2.92*eV, 3.03*eV};
+    
+    G4double rindex_sipm[4]     = {1.52, 1.52, 1.52, 1.52};   // silicone/epoxy
+    G4double abslength_sipm[4]  = {100*cm, 100*cm, 100*cm, 100*cm}; // very transparent
+    
+    G4MaterialPropertiesTable* sipm_mt = new G4MaterialPropertiesTable();
+    sipm_mt->AddProperty("RINDEX",    photonEnergySiPM, rindex_sipm,    4);
+    sipm_mt->AddProperty("ABSLENGTH", photonEnergySiPM, abslength_sipm, 4);
+    
+    SiPMWindow->SetMaterialPropertiesTable(sipm_mt);
+
+    // Units should be Atoms per cc (x10^22):
+    // BC408->AddElement(H, nAtoms=523);
+    // BC408->AddElement(C, nAtoms=474);
+
+    // old 4 bin modeling
+    //G4double PhotonEnergy[4] = {2.640*eV, 2.826*eV, 2.919*eV, 3.026*eV}; // based on common wavelengths: {470*nm, 439*nm, 425*nm, 410*nm} 
+    //G4double rindex_bc408[4] = {1.58, 1.58, 1.58, 1.58};
+    //G4double abslength_bc408[4] = {380*cm, 380*cm, 380*cm, 380*cm}; // or {210*cm, 210*cm, 210*cm, 210*cm} ? 
+    //G4double scintcomp1[4] = {0.3, 0.739, 0.994, 0.378};
+    //G4double scintcomp2[4] = {0.3, 0.739, 0.994, 0.378}; // ?
+    //G4double scintcomp3[4] = {0.3, 0.739, 0.994, 0.378}; // ?
+
+    G4MaterialPropertiesTable *BC408_mt = new G4MaterialPropertiesTable();
+
+    // Refractive index and absorption can be constant over this range:
+    G4double rindex_bc408[nScint];
+    G4double abslength_bc408[nScint];
+    for (int i = 0; i < nScint; ++i) {
+      rindex_bc408[i]    = 1.58;     // from datasheet
+      abslength_bc408[i] = 380*cm;   // your current value
+    }
+    
+    BC408_mt->AddProperty("RINDEX", PhotonEnergy, rindex_bc408, nScint);
+    BC408_mt->AddProperty("ABSLENGTH", PhotonEnergy, abslength_bc408, nScint);
+
+    // Use the same spectrum for all components unless you explicitly need
+    // wavelength–dependent fast/slow components; Geant4 will normalize it.
+    BC408_mt->AddProperty("SCINTILLATIONCOMPONENT1", PhotonEnergy, scintSpectrum, nScint);
+    BC408_mt->AddProperty("SCINTILLATIONCOMPONENT2", PhotonEnergy, scintSpectrum, nScint);
+    BC408_mt->AddProperty("SCINTILLATIONCOMPONENT3", PhotonEnergy, scintSpectrum, nScint);
+
+    // Smooth interpolation between points
+    //pFast->SetSpline(true);
+    //pSlow1->SetSpline(true);
+    //pSlow2->SetSpline(true);
+
+    // old 4 bin modeling
+    // BC408_mt->AddProperty("ABSLENGTH", PhotonEnergy, abslength_bc408, 4);
+    // BC408_mt->AddProperty("RINDEX", PhotonEnergy, rindex_bc408, 4);
+    // BC408_mt->AddProperty("SCINTILLATIONCOMPONENT1", PhotonEnergy, scintcomp1, 4);
+    // BC408_mt->AddProperty("SCINTILLATIONCOMPONENT2", PhotonEnergy, scintcomp2, 4);
+    // BC408_mt->AddProperty("SCINTILLATIONCOMPONENT3", PhotonEnergy, scintcomp3, 4);
+
+    BC408_mt->AddConstProperty("SCINTILLATIONTIMECONSTANT1", 2.1*ns);
+    BC408_mt->AddConstProperty("SCINTILLATIONTIMECONSTANT2", 2.1*ns); // ?
+    BC408_mt->AddConstProperty("SCINTILLATIONTIMECONSTANT3", 2.1*ns); // ?
+    //BC408_mt->AddConstProperty("SCINTILLATIONYIELD", 10./MeV);
+
+    BC408_mt->AddConstProperty("SCINTILLATIONYIELD", 200./MeV);
+    //BC408_mt->AddConstProperty("SCINTILLATIONYIELD", 10000./MeV);
+    //BC408_mt->AddConstProperty("SCINTILLATIONYIELD1", 1.0);
+    // BC408_mt->AddConstProperty("SCINTILLATIONYIELD2", 1.0);
+    // BC408_mt->AddConstProperty("SCINTILLATIONYIELD3", 0.1);
+    BC408_mt->AddConstProperty("RESOLUTIONSCALE", 1.0);
+    BC408_mt->AddConstProperty("SCINTILLATIONRISETIME1", 0.9*ns);
+    // BC408_mt->AddConstProperty("SCINTILLATIONRISETIME2", 10);
+    // BC408_mt->AddConstProperty("SCINTILLATIONRISETIME3", 20);
+
+    BC408->SetMaterialPropertiesTable(BC408_mt);
+
+    // Mirror Surface Boundary ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    
+    //G4double reflectivity[4] = {0.95, 0.95, 0.95, 0.95};
+
+    //G4double reflectivity[4] = {0.03, 0.03, 0.03, 0.03};
+
+    // G4double reflectivity[4] = {0.0, 0.0, 0.0, 0.0};
+    // G4double transmittance[4] = {1.0, 1.0, 1.0, 1.0};
+
+    // mirrorSurface = new G4OpticalSurface("mirrorSurface");
+    // mirrorSurface->SetType(dielectric_metal);
+    // mirrorSurface->SetModel(unified);
+    // mirrorSurface->SetFinish(groundteflonair); // Represents a diffuse reflection typical for Teflon
+
+
+    // G4MaterialPropertiesTable *mptMirror = new G4MaterialPropertiesTable();
+
+    // mptMirror->AddProperty("REFLECTIVITY", PhotonEnergy, reflectivity, 4);
+    // mptMirror->AddProperty("TRANSMITTANCE", PhotonEnergy, transmittance, 4);
+
+    // mirrorSurface->SetMaterialPropertiesTable(mptMirror);
+
+    // ============================================================================
+    // New optical surface for TOP/BOTTOM scintillator faces (5x5 cm²)
+    // Reflectivity = 0.98 , Transmittance = 0.0 (best-case PTFE-like)
+    // ============================================================================
+    G4double teflonReflectivity[4]  = {0.98, 0.98, 0.98, 0.98};
+
+    //G4double teflonReflectivity[4]  = {0.0, 0.0, 0.0, 0.0};
+    //G4double teflonReflectivity[4]  = {1, 1, 1, 1};
+    G4double teflonTransmittance[4] = {0.0 , 0.0 , 0.0 , 0.0};
+    
+    G4OpticalSurface* topBottomSurface = new G4OpticalSurface("topBottomSurface");
+    topBottomSurface->SetType(dielectric_metal);
+    topBottomSurface->SetModel(unified);
+    topBottomSurface->SetFinish(groundfrontpainted);
+    
+    G4MaterialPropertiesTable* mptTopBottom = new G4MaterialPropertiesTable();
+    mptTopBottom->AddProperty("REFLECTIVITY",  PhotonEnergy, teflonReflectivity,  4);
+    mptTopBottom->AddProperty("TRANSMITTANCE", PhotonEnergy, teflonTransmittance, 4);
+    topBottomSurface->SetMaterialPropertiesTable(mptTopBottom);
+    
+    // ============================================================================
+    // Optical surface for SIDE faces (polished sides + darkest black tape)
+    // Very low reflectivity (2%), zero transmittance (all else absorbed)
+    // ============================================================================
+    //G4double blackSideReflectivity[4]  = {0.0, 0.0, 0.0, 0.0};
+    G4double blackSideReflectivity[4]  = {0.02, 0.02, 0.02, 0.02};
+    G4double blackSideTransmittance[4] = {0.0 , 0.0 , 0.0 , 0.0};
+
+    G4OpticalSurface* sideBlackSurface = new G4OpticalSurface("sideBlackSurface");
+    sideBlackSurface->SetType(dielectric_metal);
+    sideBlackSurface->SetModel(unified);
+    sideBlackSurface->SetFinish(ground);  // dark, slightly rough black tape
+
+    G4MaterialPropertiesTable* mptSideBlack = new G4MaterialPropertiesTable();
+    mptSideBlack->AddProperty("REFLECTIVITY",  PhotonEnergy, blackSideReflectivity,  4);
+    mptSideBlack->AddProperty("TRANSMITTANCE", PhotonEnergy, blackSideTransmittance, 4);
+    sideBlackSurface->SetMaterialPropertiesTable(mptSideBlack);
+
+    // ============================================================================
+    // Optical surface for scintillator–SiPM coupling (polished scint + optical gel)
+    // Best-case: zero reflection, full transmission
+    // ============================================================================
+    G4double sipmReflectivity[4]  = {0.0, 0.0, 0.0, 0.0};
+    G4double sipmTransmittance[4] = {1.0, 1.0, 1.0, 1.0};
+
+    G4OpticalSurface* sipmCouplingSurface = new G4OpticalSurface("sipmCouplingSurface");
+    sipmCouplingSurface->SetType(dielectric_dielectric);
+    sipmCouplingSurface->SetModel(unified);
+    sipmCouplingSurface->SetFinish(polished);
+
+    G4MaterialPropertiesTable* mptSipmCoupling = new G4MaterialPropertiesTable();
+    mptSipmCoupling->AddProperty("REFLECTIVITY",  PhotonEnergy, sipmReflectivity,  4);
+    mptSipmCoupling->AddProperty("TRANSMITTANCE", PhotonEnergy, sipmTransmittance, 4);
+    sipmCouplingSurface->SetMaterialPropertiesTable(mptSipmCoupling);
+
+    /*
+    // Reflective (Teflon-like) surface
+    G4OpticalSurface* reflectiveSurface = new G4OpticalSurface("reflectiveSurface");
+    reflectiveSurface->SetType(dielectric_metal);
+    reflectiveSurface->SetModel(unified);
+    reflectiveSurface->SetFinish(groundteflonair);
+
+    //G4double PhotonEnergy[4] = {2.64*eV, 2.83*eV, 2.92*eV, 3.03*eV};
+    G4double reflectivity[4] = {0.95, 0.95, 0.95, 0.95};
+    G4MaterialPropertiesTable* mptReflective = new G4MaterialPropertiesTable();
+    mptReflective->AddProperty("REFLECTIVITY", PhotonEnergy, reflectivity, 4);
+    reflectiveSurface->SetMaterialPropertiesTable(mptReflective);
+    
+    // Black (absorbing) surface
+    G4OpticalSurface* blackSurface = new G4OpticalSurface("blackSurface");
+    blackSurface->SetType(dielectric_metal);
+    blackSurface->SetModel(unified);
+    blackSurface->SetFinish(ground);
+    G4double blackReflectivity[4] = {0.0, 0.0, 0.0, 0.0};
+    G4MaterialPropertiesTable* mptBlack = new G4MaterialPropertiesTable();
+    mptBlack->AddProperty("REFLECTIVITY", PhotonEnergy, blackReflectivity, 4);
+    blackSurface->SetMaterialPropertiesTable(mptBlack);
+    */
+
+ 
+    // Volumes |=========================================================================================================
+    
+    G4Material *scintMat = G4Material::GetMaterial("BC408");
+    G4Material *worldMat = nist->FindOrBuildMaterial("G4_AIR");
+    
+    // Define Mother Volume :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    G4Box *solidWorld = new G4Box("solidWorld", 10*m, 10*m, 10*m);
+
+    // Define Logical Volume
+    G4LogicalVolume *logicWorld = new G4LogicalVolume(solidWorld, worldMat, "logicWorld");
+
+    // Define Physical Volume
+    G4VPhysicalVolume *physWorld = new G4PVPlacement(0, G4ThreeVector(0., 0., 0.), logicWorld, "physWorld", 0, false, 0, true);
+
+
+    // Define Scintillator Volume: :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // Define World Volume
+    // G4Box *solidScint = new G4Box("solidScint", 30.5*cm, 30.5*cm, 0.635*cm); THIS IS THE WORKING SQAURE SCINTILALTOR VOLUME
+    // G4Box *solidScint = new G4Box("solidScint", 5*m, 5*m, 5*m);
+
+    //---------------------------------
+    // square detector 5x5x1 cm^3
+    //---------------------------------
+    
+    //G4Box *solidScint = new G4Box("solidScint", 2.5*cm, 2.5*cm, 0.5*cm); // Scintillatino Bar Design with fibers
+    // Define Logical Volume
+    //G4LogicalVolume *logicScint = new G4LogicalVolume(solidScint, scintMat, "logicWorld");
+
+    //------------------------------------------
+    // circular detector with 7.5 cm diameter
+    //------------------------------------------
+
+    // 7.5 cm diameter (R = 3.75 cm), 1 cm thick (half-height = 0.5 cm)
+    
+    G4Tubs* solidScint = new G4Tubs("solidScint",
+				    0.*cm,        // inner radius
+				    scintRadius,  // outer radius
+				    scintHalfZ,   // half-height
+				    0.*deg, 360.*deg);
+    
+    //G4LogicalVolume *logicScint = new G4LogicalVolume(solidScint, scintMat, "logicScint");
+    
+    
+    // Define Logical Reflecive Surface Boundary
+    //G4LogicalSkinSurface *skin = new G4LogicalSkinSurface("skin", logicScint, mirrorSurface);
+
+    // Define Physical Volume
+    //G4VPhysicalVolume *physScint = new G4PVPlacement(0, G4ThreeVector(0., 0., 0.), logicScint, "physScint", logicWorld, false, 0, true);
+
+
+    
+    
+    // ============================================================================
+    // Thin side wrappers on ±X and ±Y to host black tape side surfaces
+    // ============================================================================
+    // G4Box* solidXSideWrap = new G4Box("solidXSideWrap", 0.001*cm, 2.5*cm, 0.5*cm);
+    // G4Box* solidYSideWrap = new G4Box("solidYSideWrap", 2.5*cm, 0.001*cm, 0.5*cm);
+
+    // G4LogicalVolume* logicXPlusWrap = new G4LogicalVolume(solidXSideWrap, worldMat, "logicXPlusWrap");
+    // G4LogicalVolume* logicXMinusWrap = new G4LogicalVolume(solidXSideWrap, worldMat, "logicXMinusWrap");
+    // G4LogicalVolume* logicYPlusWrap = new G4LogicalVolume(solidYSideWrap, worldMat, "logicYPlusWrap");
+    // G4LogicalVolume* logicYMinusWrap = new G4LogicalVolume(solidYSideWrap, worldMat, "logicYMinusWrap");
+
+    // // Place them flush with the 4 side faces
+    // G4VPhysicalVolume* physXPlusWrap =
+    //   new G4PVPlacement(0, G4ThreeVector( 2.5*cm + 0.001*cm, 0., 0.),
+    //                     logicXPlusWrap, "physXPlusWrap", logicWorld, false, 0, true);
+
+    // G4VPhysicalVolume* physXMinusWrap =
+    //   new G4PVPlacement(0, G4ThreeVector(-2.5*cm - 0.001*cm, 0., 0.),
+    //                     logicXMinusWrap, "physXMinusWrap", logicWorld, false, 0, true);
+
+    // G4VPhysicalVolume* physYPlusWrap =
+    //   new G4PVPlacement(0, G4ThreeVector(0.,  2.5*cm + 0.001*cm, 0.),
+    //                     logicYPlusWrap, "physYPlusWrap", logicWorld, false, 0, true);
+
+    // G4VPhysicalVolume* physYMinusWrap =
+    //   new G4PVPlacement(0, G4ThreeVector(0., -2.5*cm - 0.001*cm, 0.),
+    //                     logicYMinusWrap, "physYMinusWrap", logicWorld, false, 0, true);
+
+
+
+
+    // ============================================================================
+    // Cylindrical side wrapper to host black tape side surface
+    // ============================================================================
+    G4double wrapThickness = 0.001*cm;
+    
+    G4Tubs* solidSideWrap = new G4Tubs("solidSideWrap",
+				       scintRadius + 0.*cm,
+				       scintRadius + wrapThickness,
+				       scintHalfZ,
+				       0.*deg, 360.*deg);
+    
+    G4LogicalVolume* logicSideWrap =
+      new G4LogicalVolume(solidSideWrap, worldMat, "logicSideWrap");
+    
+    // G4VPhysicalVolume* physSideWrap =
+    //   new G4PVPlacement(0, G4ThreeVector(),
+    // 			logicSideWrap, "physSideWrap",
+    // 			logicWorld, false, 0, true);
+    
+    // Apply black side surface (R=0.02, T=0) on cylindrical side
+    // new G4LogicalBorderSurface("Scint_SideBlack",
+    // 			       physScint, physSideWrap, sideBlackSurface);
+    // new G4LogicalBorderSurface("SideBlack_Scint",
+    // 			       physSideWrap, physScint, sideBlackSurface);
+
+    
+    
+    /*  
+    // Outer air shell (1 mm thick around)
+    G4Box* solidShell = new G4Box("solidShell", 2.6*cm, 2.6*cm, 0.6*cm);
+    G4LogicalVolume* logicShell = new G4LogicalVolume(solidShell, worldMat, "logicShell");
+
+    G4VPhysicalVolume* physShell = new G4PVPlacement(0, G4ThreeVector(0.,0.,0.), logicShell, "physShell", logicWorld, false, 0, true);
+
+    // Place the scintillator inside the shell
+    G4VPhysicalVolume* physScint = new G4PVPlacement(0, G4ThreeVector(0.,0.,0.), logicScint, "physScint", logicShell, false, 0, true);
+
+    // Reflective: +Z and –Z faces (the 5×5 cm ends)
+    new G4LogicalBorderSurface("reflectiveTop",  physScint, physShell, reflectiveSurface);
+    new G4LogicalBorderSurface("reflectiveBottom", physShell, physScint, reflectiveSurface);
+
+    // Black: the four side faces (X and Y sides)
+    new G4LogicalBorderSurface("blackXpos",  physScint, physShell, blackSurface);
+    new G4LogicalBorderSurface("blackXneg",  physShell, physScint, blackSurface);
+    new G4LogicalBorderSurface("blackYpos",  physScint, physShell, blackSurface);
+    new G4LogicalBorderSurface("blackYneg",  physShell, physScint, blackSurface);
+*/
+
+    // ============================================================================
+    // Create thin wrapper slabs on +Z and -Z to host top/bottom reflective surfaces
+    // ============================================================================
+    // G4Box* solidTopWrap    = new G4Box("solidTopWrap",    2.5*cm, 2.5*cm, 0.001*cm);
+    // G4Box* solidBottomWrap = new G4Box("solidBottomWrap", 2.5*cm, 2.5*cm, 0.001*cm);
+    
+    // G4LogicalVolume* logicTopWrap    = new G4LogicalVolume(solidTopWrap,    worldMat, "logicTopWrap");
+    // G4LogicalVolume* logicBottomWrap = new G4LogicalVolume(solidBottomWrap, worldMat, "logicBottomWrap");
+    
+    // // Place on +Z and -Z faces
+    // G4VPhysicalVolume* physTopWrap =
+    //   new G4PVPlacement(0, G4ThreeVector(0., 0., 0.5*cm + 0.001*cm),
+    // 			logicTopWrap, "physTopWrap", logicWorld, false, 0, true);
+    
+    // G4VPhysicalVolume* physBottomWrap =
+    //   new G4PVPlacement(0, G4ThreeVector(0., 0., -0.5*cm - 0.001*cm),
+    // 			logicBottomWrap, "physBottomWrap", logicWorld, false, 0, true);
+
+
+    
+    // ============================================================================
+    // Create thin wrapper disks on +Z and -Z to host top/bottom reflective surfaces
+    // ============================================================================
+    G4double wrapHalfZ = 0.001*cm;
+    
+    G4Tubs* solidTopWrap =
+      new G4Tubs("solidTopWrap", 0.*cm, scintRadius, wrapHalfZ, 0.*deg, 360.*deg);
+    G4Tubs* solidBottomWrap =
+      new G4Tubs("solidBottomWrap", 0.*cm, scintRadius, wrapHalfZ, 0.*deg, 360.*deg);
+
+    G4LogicalVolume* logicTopWrap =
+      new G4LogicalVolume(solidTopWrap, worldMat, "logicTopWrap");
+    G4LogicalVolume* logicBottomWrap =
+      new G4LogicalVolume(solidBottomWrap, worldMat, "logicBottomWrap");
+
+    // Place on +Z and -Z faces
+    // G4VPhysicalVolume* physTopWrap =
+    //   new G4PVPlacement(0,
+    // 			G4ThreeVector(0., 0., scintHalfZ + wrapHalfZ),
+    // 			logicTopWrap, "physTopWrap",
+    // 			logicWorld, false, 0, true);
+
+    // G4VPhysicalVolume* physBottomWrap =
+    //   new G4PVPlacement(0,
+    // 			G4ThreeVector(0., 0., -scintHalfZ - wrapHalfZ),
+    // 			logicBottomWrap, "physBottomWrap",
+    // 			logicWorld, false, 0, true);
+
+    
+    // 4 SiPMs at the corners
+    
+    //G4Box *solidDetector = new G4Box("solidDetector", 3*mm, 0.5*mm, 3*mm);
+
+    G4Box *solidDetector = new G4Box("solidDetector", 3*mm, 0.5*mm,3*mm);
+    logicDetector = new G4LogicalVolume(solidDetector, SiPMWindow, "logicDetector");
+
+    //G4Box *solidDetectorSmall = new G4Box("solidDetectorSmall", 2*mm, 0.5*mm, 2*mm);
+    //G4LogicalVolume* logicDetectorSmall = new G4LogicalVolume(solidDetectorSmall, SiPMWindow, "logicDetectorSmall");
+
+    
+    // G4VPhysicalVolume *physDetector0 = new G4PVPlacement(0, 
+    // 							 G4ThreeVector(-2.2*cm, -2.45*cm, 0.0*cm),  // changed cm to m ######
+    // 							 logicDetector, "physDetector", logicScint, false, 0, true);
+	
+    // G4VPhysicalVolume *physDetector1 = new G4PVPlacement(0, 
+    // 							G4ThreeVector( 2.2*cm, -2.45*cm, 0.0*cm),  // changed cm to m ######
+    // 							logicDetector, "physDetector", logicScint, false, 1, true);
+
+    // G4VPhysicalVolume *physDetector2 = new G4PVPlacement(0, 
+    // 							G4ThreeVector(-2.2*cm, 2.45*cm, 0.0*cm),  // changed cm to m ######
+    // 							logicDetector, "physDetector", logicScint, false, 2, true);
+
+    // G4VPhysicalVolume *physDetector3 = new G4PVPlacement(0, 
+    // 							G4ThreeVector( 2.2*cm, 2.45*cm, 0.0*cm),  // changed cm to m ######
+    // 							logicDetector, "physDetector", logicScint, false, 3, true);
+
+    //----------------------------------------------------------------------------------------------
+    // Place 4 SiPMs on the cylindrical side at 0°, 90°, 180°, 270°
+    // Local +Y of the SiPM points radially outward; thickness along local Y is 1 mm
+    //----------------------------------------------------------------------------------------------
+    
+    G4double sipmHalfNormal = 0.5*mm;                     // half-thickness along local Y
+    G4double sipmRadius     = scintRadius - sipmHalfNormal; // keep SiPM fully inside BC408
+    
+    // Rotation matrices so +Y of the SiPM points radially outward
+
+    G4RotationMatrix* rotXplus = new G4RotationMatrix();
+    rotXplus->rotateZ(90.*deg);     // local +Y → +X
+    
+    G4RotationMatrix* rotYplus = new G4RotationMatrix();
+    rotYplus->rotateZ(180.*deg);    // local +Y → +Y
+    
+    G4RotationMatrix* rotXminus = new G4RotationMatrix();
+    rotXminus->rotateZ(270.*deg);   // local +Y → -X
+    
+    G4RotationMatrix* rotYminus = new G4RotationMatrix();
+    rotYminus->rotateZ(0.*deg);     // local +Y → -Y
+
+
+    // new G4LogicalBorderSurface("Scint_SideBlack",
+    //                            physScint, physSideWrap, sideBlackSurface);
+    // new G4LogicalBorderSurface("SideBlack_Scint",
+    //                            physSideWrap, physScint, sideBlackSurface);
+
+
+    // loop of nDisks and make a disk + 4 SiPMs for each one
+    
+    for (G4int i = 0; i < nDisks; ++i) {
+
+        // Center z for this disk
+        G4double z0 = -halfStack + scintHalfZ + i*centerSpacing;
+	//G4cout << "z0 value " << z0 << "\n";
+	
+	G4LogicalVolume* logicScint_i = new G4LogicalVolume(solidScint, scintMat, "logicScint");
+	    
+        // 1) Scintillator disk i
+        G4VPhysicalVolume* physScint_i =
+          new G4PVPlacement(0,
+                            G4ThreeVector(0., 0., z0),
+                            logicScint_i, "physScint",
+                            logicWorld, false, i, true);
+
+        // 2) Side wrap for disk i
+        G4VPhysicalVolume* physSideWrap_i =
+          new G4PVPlacement(0,
+                            G4ThreeVector(0., 0., z0),
+                            logicSideWrap, "physSideWrap",
+                            logicWorld, false, i, true);
+
+        // 3) Top / bottom wraps for disk i
+        G4VPhysicalVolume* physTopWrap_i =
+          new G4PVPlacement(0,
+                            G4ThreeVector(0., 0., z0 + scintHalfZ + wrapHalfZ),
+                            logicTopWrap, "physTopWrap",
+                            logicWorld, false, i, true);
+
+        G4VPhysicalVolume* physBottomWrap_i =
+          new G4PVPlacement(0,
+                            G4ThreeVector(0., 0., z0 - scintHalfZ - wrapHalfZ),
+                            logicBottomWrap, "physBottomWrap",
+                            logicWorld, false, i, true);
+
+        // 4) Four SiPMs on the side of disk i
+        G4VPhysicalVolume* physDetector0_i =
+          new G4PVPlacement(rotXplus,
+                            G4ThreeVector( sipmRadius, 0., 0),
+                            logicDetector, "physDetector0",
+                            logicScint_i, false, 4*i + 0, true);
+
+        G4VPhysicalVolume* physDetector1_i =
+          new G4PVPlacement(rotYplus,
+                            G4ThreeVector(0.,  sipmRadius, 0),
+                            logicDetector, "physDetector1",
+                            logicScint_i, false, 4*i + 1, true);
+
+        G4VPhysicalVolume* physDetector2_i =
+          new G4PVPlacement(rotXminus,
+                            G4ThreeVector(-sipmRadius, 0., 0),
+                            logicDetector, "physDetector2",
+                            logicScint_i, false, 4*i + 2, true);
+
+        G4VPhysicalVolume* physDetector3_i =
+          new G4PVPlacement(rotYminus,
+                            G4ThreeVector(0., -sipmRadius, 0),
+                            logicDetector, "physDetector3",
+                            logicScint_i, false, 4*i + 3, true);
+
+        // 5) Optical surfaces for this disk
+
+        // SiPM coupling per disk
+        new G4LogicalBorderSurface("Scint_SiPM0",
+                                   physScint_i, physDetector0_i, sipmCouplingSurface);
+        new G4LogicalBorderSurface("SiPM0_Scint",
+                                   physDetector0_i, physScint_i, sipmCouplingSurface);
+
+        new G4LogicalBorderSurface("Scint_SiPM1",
+                                   physScint_i, physDetector1_i, sipmCouplingSurface);
+        new G4LogicalBorderSurface("SiPM1_Scint",
+                                   physDetector1_i, physScint_i, sipmCouplingSurface);
+
+        new G4LogicalBorderSurface("Scint_SiPM2",
+                                   physScint_i, physDetector2_i, sipmCouplingSurface);
+        new G4LogicalBorderSurface("SiPM2_Scint",
+                                   physDetector2_i, physScint_i, sipmCouplingSurface);
+
+        new G4LogicalBorderSurface("Scint_SiPM3",
+                                   physScint_i, physDetector3_i, sipmCouplingSurface);
+        new G4LogicalBorderSurface("SiPM3_Scint",
+                                   physDetector3_i, physScint_i, sipmCouplingSurface);
+
+        // Top/bottom reflective
+        new G4LogicalBorderSurface("Scint_TopReflect",
+                                   physScint_i, physTopWrap_i, topBottomSurface);
+        new G4LogicalBorderSurface("TopReflect_Scint",
+                                   physTopWrap_i, physScint_i, topBottomSurface);
+
+        new G4LogicalBorderSurface("Scint_BottomReflect",
+                                   physScint_i, physBottomWrap_i, topBottomSurface);
+        new G4LogicalBorderSurface("BottomReflect_Scint",
+                                   physBottomWrap_i, physScint_i, topBottomSurface);
+
+        // Side black
+        new G4LogicalBorderSurface("Scint_SideBlack",
+                                   physScint_i, physSideWrap_i, sideBlackSurface);
+        new G4LogicalBorderSurface("SideBlack_Scint",
+                                   physSideWrap_i, physScint_i, sideBlackSurface);
+    }
+
+    
+    // // SiPM at +X side
+    // G4VPhysicalVolume *physDetector0 = new G4PVPlacement(
+    // 							 rotXplus,
+    // 							 G4ThreeVector(sipmRadius, 0., 0.),
+    // 							 logicDetector,
+    // 							 "physDetector0",
+    // 							 logicScint,
+    // 							 false, 0, true);
+    
+    // // SiPM at +Y side
+    // G4VPhysicalVolume *physDetector1 = new G4PVPlacement(
+    // 							 rotYplus,
+    // 							 G4ThreeVector(0., sipmRadius, 0.),
+    // 							 logicDetector,
+    // 							 "physDetector1",
+    // 							 logicScint,
+    // 							 false, 1, true);
+    
+    // // SiPM at -X side
+    // G4VPhysicalVolume *physDetector2 = new G4PVPlacement(
+    // 							 rotXminus,
+    // 							 G4ThreeVector(-sipmRadius, 0., 0.),
+    // 							 logicDetector,
+    // 							 "physDetector2",
+    // 							 logicScint,
+    // 							 false, 2, true);
+
+    // // SiPM at -Y side
+    // G4VPhysicalVolume *physDetector3 = new G4PVPlacement(
+    // 							 rotYminus,
+    // 							 G4ThreeVector(0., -sipmRadius, 0.),
+    // 							 logicDetector,
+    // 							 "physDetector3",
+    // 							 logicScint,
+    // 							 false, 3, true);
+    
+    
+    // ============================================================================
+    // Apply best-case scintillator–SiPM coupling on the four contact faces
+    // ============================================================================
+    // new G4LogicalBorderSurface("Scint_SiPM0",
+    //                            physScint, physDetector0, sipmCouplingSurface);
+    // new G4LogicalBorderSurface("SiPM0_Scint",
+    //                            physDetector0, physScint, sipmCouplingSurface);
+
+    // new G4LogicalBorderSurface("Scint_SiPM1",
+    //                            physScint, physDetector1, sipmCouplingSurface);
+    // new G4LogicalBorderSurface("SiPM1_Scint",
+    //                            physDetector1, physScint, sipmCouplingSurface);
+
+    // new G4LogicalBorderSurface("Scint_SiPM2",
+    //                            physScint, physDetector2, sipmCouplingSurface);
+    // new G4LogicalBorderSurface("SiPM2_Scint",
+    //                            physDetector2, physScint, sipmCouplingSurface);
+
+    // new G4LogicalBorderSurface("Scint_SiPM3",
+    //                            physScint, physDetector3, sipmCouplingSurface);
+    // new G4LogicalBorderSurface("SiPM3_Scint",
+    //                            physDetector3, physScint, sipmCouplingSurface);
+    
+    // ============================================================================
+    // Apply reflective 0.98 / 0.00 surface *only* between scintillator and slab
+    // ============================================================================
+    // new G4LogicalBorderSurface("Scint_TopReflect",
+    // 			       physScint, physTopWrap, topBottomSurface);
+    
+    // new G4LogicalBorderSurface("TopReflect_Scint",
+    // 			       physTopWrap, physScint, topBottomSurface);
+    
+    // new G4LogicalBorderSurface("Scint_BottomReflect",
+    // 			       physScint, physBottomWrap, topBottomSurface);
+    
+    // new G4LogicalBorderSurface("BottomReflect_Scint",
+    // 			       physBottomWrap, physScint, topBottomSurface);
+
+
+    // ============================================================================
+    // Apply black side surface (R=0.02, T=0) only on ±X and ±Y faces
+    // ============================================================================
+    // new G4LogicalBorderSurface("Scint_XPlusBlack",
+    //                            physScint, physXPlusWrap, sideBlackSurface);
+    // new G4LogicalBorderSurface("XPlusBlack_Scint",
+    //                            physXPlusWrap, physScint, sideBlackSurface);
+
+    // new G4LogicalBorderSurface("Scint_XMinusBlack",
+    //                            physScint, physXMinusWrap, sideBlackSurface);
+    // new G4LogicalBorderSurface("XMinusBlack_Scint",
+    //                            physXMinusWrap, physScint, sideBlackSurface);
+
+    // new G4LogicalBorderSurface("Scint_YPlusBlack",
+    //                            physScint, physYPlusWrap, sideBlackSurface);
+    // new G4LogicalBorderSurface("YPlusBlack_Scint",
+    //                            physYPlusWrap, physScint, sideBlackSurface);
+
+    // new G4LogicalBorderSurface("Scint_YMinusBlack",
+    //                            physScint, physYMinusWrap, sideBlackSurface);
+    // new G4LogicalBorderSurface("YMinusBlack_Scint",
+    //                            physYMinusWrap, physScint, sideBlackSurface);
+    
+    // Define Four Photon Detectors (in place of SiPMs) ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+/*
+    G4Box *solidDetector = new G4Box("solidDetector", 5*m, 5*m, 1*m);
+    logicDetector = new G4LogicalVolume(solidDetector, scintMat, "logicDetector");
+    G4VPhysicalVolume *physDetector = new G4PVPlacement(0, 
+            G4ThreeVector(0, 0, 4*m), 
+            logicDetector, "physDetector", logicScint, false, 0, true);
+*/
+
+/* ============================  THIS IS THE WORKING SCINITLLATOR CONFIGIRATION CORRESPONDING TO SCINTILALTOR: (30.5*cm, 30.5*cm, 0.635*cm)  ===================================
+    G4Box *solidDetector = new G4Box("solidDetector", 3*mm, 3*mm, 1*mm);
+
+    logicDetector = new G4LogicalVolume(solidDetector, scintMat, "logicDetector");
+
+    for (G4int i = 0; i < 2; i++) {
+        for (G4int j = 0; j < 2; j++) {
+            G4VPhysicalVolume *physDetector = new G4PVPlacement(0, 
+            G4ThreeVector(-15.25*cm+i*30.5*cm, -15.25*cm+j*30.5*cm, 0.735*cm),  // changed cm to m ######
+            logicDetector, "physDetector", logicScint, false, j+i*2, true);
+        }
+    }
+    =====================================================================================================================================
+*/ 
+
+    /*
+    for (G4int i = 0; i < 50; i++) {
+        for (G4int j = 0; j < 50; j++) {
+            G4VPhysicalVolume *physDetector = new G4PVPlacement(0, 
+            G4ThreeVector(-30.5*cm+(10*i+6*cm), -30.5*cm+(10*j+6*cm), 0.535*cm), 
+            logicDetector, "physDetector", logicScint, false, j+i*20, true);
+        }
+    }
+    */
+
+// ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+// Implement 2 Wavelength Shifting Fibers as Sensitive Detectors (no SiPMs): 
+
+// G4Tubs* solidFiber = new G4Tubs("solidFiber", 0, 0.5*mm, 0.9285*m, 0.*deg, 360.*deg);
+
+// logicFiber = new G4LogicalVolume(solidFiber, scintMat, "logicFiber");
+
+
+// G4RotationMatrix* rotY = new G4RotationMatrix();
+// rotY->rotateY(90.0 * deg);
+// G4double scintWidth = 5 * cm;
+// G4double posY_1 = -scintWidth / 2 + scintWidth / 4; // 1/4 way across the width
+// G4double posY_2 = scintWidth / 2 - scintWidth / 4;  // 3/4 way across the width
+
+// // Place the fibers parallel to the scintillator volume
+// new G4PVPlacement(rotY, G4ThreeVector(0., posY_1, 0.), logicFiber, "physFiber1", logicScint, false, 0, true);
+// new G4PVPlacement(rotY, G4ThreeVector(0., posY_2, 0.), logicFiber, "physFiber2", logicScint, false, 1, true);
+
+
+// ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    return physWorld;
+}
+
+// Implement Sensitive Detector and set equal to logicDetector
+
+
+
+// Required to inmplement sensitive detector:
+
+void MyDetectorConstruction::ConstructSDandField() {
+  //MySensitiveDetector *sensDet = new MySensitiveDetector("SensitiveDetector");
+  //logicFiber->SetSensitiveDetector(sensDet);
+
+    auto sdManager = G4SDManager::GetSDMpointer();
+
+    // Sensitive detector for the SiPM volumes (physDetector0..3 via logicDetector)
+    auto sipmSD = new MySensitiveDetector("SensitiveDetector");
+    sdManager->AddNewDetector(sipmSD);
+
+    if (logicDetector) {
+        logicDetector->SetSensitiveDetector(sipmSD);
+    }
+
+    //if (logicDetectorSmall) {
+    //    logicDetectorSmall->SetSensitiveDetector(sipmSD);
+    //}
+}
