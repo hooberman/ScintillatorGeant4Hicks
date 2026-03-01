@@ -27,7 +27,7 @@ class MyDetectorConstruction : public G4VUserDetectorConstruction {
         G4LogicalVolume *logicDetector;
         //G4LogicalVolume *logicDetectorSmall;
         G4LogicalVolume* logicFiber; 
-        virtual void ConstructSDandField();
+  //virtual void ConstructSDandField();
 
         G4OpticalSurface *mirrorSurface;
 };
